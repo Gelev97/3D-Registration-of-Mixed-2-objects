@@ -110,34 +110,48 @@ def invRodrigues(R):
         r = np.reshape(r, (3, 1))
         return r
 
-def costFunc(x, pts1, pts2):
-    rotMat = rodrigues(x[:3])
-    t = x[3:]
-    gmat = np.zeros((4, 4))
-    gmat[3, 3] = 1
-    gmat[:3, :3] = rotMat
-    gmat[:3, 3] = t
-    res = errFunc(gmat, pts1, pts2).sum(axis = 0)
-    return capErr(res, 5)
+def costFunc(x, pts1, pts2, rigid=True):
+    if rigid:
+        rotMat = rodrigues(x[:3])
+        t = x[3:]
+        gmat = np.zeros((4, 4))
+        gmat[3, 3] = 1
+        gmat[:3, :3] = rotMat
+        gmat[:3, 3] = t
+    else:
+        gmat = x.reshape((4, 4))
 
-def register(pts1, pts2):
+    res = errFunc(gmat, pts1, pts2).sum(axis = 0)
+    return capErr(res, 50)
+
+def register(pts1, pts2, rigid=True):
     # use ransac as initial step
     # truncated nonlinear least square for subsequent steps.
-    func_sig = lambda x : (costFunc(x, pts1, pts2).flatten())
+    (r, c) = pts1.shape
+    if r == 3:
+        pts1 = np.vstack((pts1, np.ones((1, c))))
+        pts2 = np.vstack((pts2, np.ones((1, c))))
+
+    func_sig = lambda x : (costFunc(x, pts1, pts2, rigid).flatten())
     gmat_init = ransac(pts1, pts2)
     gmat_init /= gmat_init[3, 3]
-
     print("Ransac result err {}".format(errFunc(gmat_init, pts1, pts2).sum()))
 
-    r = invRodrigues(gmat_init[:3, :3])
-    t = gmat_init[:3, 3]
-    g0 = np.vstack((r.reshape((-1, 1)), t.reshape((-1, 1))))
-    g_star = optimize.leastsq(func_sig, g0)[0]
-    
-    gmat = np.zeros((4, 4))
-    gmat[3, 3] = 1
-    gmat[:3, :3] = rodrigues(g_star[:3])
-    gmat[:3, 3] = g_star[3:]
+    if rigid:
+        r = invRodrigues(gmat_init[:3, :3])
+        t = gmat_init[:3, 3]
+        g0 = np.vstack((r.reshape((-1, 1)), t.reshape((-1, 1)))).reshape((-1, ))
+        # print("gmat init\n{}".format(gmat_init[:3, :3]))
+        # print("r recon\n{}".format(rodrigues(g0[:3])))
+        # print("r \n {}".format(g0[:3]))
+        g_star = optimize.leastsq(func_sig, g0)[0]
+        gmat = np.zeros((4, 4))
+        gmat[3, 3] = 1
+        gmat[:3, :3] = rodrigues(g_star[:3])
+        gmat[:3, 3] = g_star[3:]
+    else:
+        g_star = optimize.leastsq(func_sig, gmat_init.flatten())[0]
+        gmat = g_star.reshape((4, 4))
     return gmat
 
 if __name__ == "__main__":
