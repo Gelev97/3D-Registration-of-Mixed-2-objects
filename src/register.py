@@ -110,7 +110,7 @@ def invRodrigues(R):
         r = np.reshape(r, (3, 1))
         return r
 
-def costFunc(x, pts1, pts2, rigid=True):
+def costFunc(x, pts1, pts2, rigid=True, cap = 10):
     if rigid:
         rotMat = rodrigues(x[:3])
         t = x[3:]
@@ -121,10 +121,10 @@ def costFunc(x, pts1, pts2, rigid=True):
     else:
         gmat = x.reshape((4, 4))
 
-    res = errFunc(gmat, pts1, pts2).sum(axis = 0)
-    return capErr(res, 50)
+    res = np.linalg.norm(errFunc(gmat, pts1, pts2), axis=0)
+    return capErr(res, cap)
 
-def register(pts1, pts2, rigid=True):
+def register(pts1, pts2, rigid=True, costcap = 10):
     # use ransac as initial step
     # truncated nonlinear least square for subsequent steps.
     (r, c) = pts1.shape
@@ -132,18 +132,15 @@ def register(pts1, pts2, rigid=True):
         pts1 = np.vstack((pts1, np.ones((1, c))))
         pts2 = np.vstack((pts2, np.ones((1, c))))
 
-    func_sig = lambda x : (costFunc(x, pts1, pts2, rigid).flatten())
+    func_sig = lambda x : (costFunc(x, pts1, pts2, rigid, costcap).flatten())
     gmat_init = ransac(pts1, pts2)
     gmat_init /= gmat_init[3, 3]
-    print("Ransac result err {}".format(errFunc(gmat_init, pts1, pts2).sum()))
+    # print("Ransac result err {}".format(errFunc(gmat_init, pts1, pts2).sum()))
 
     if rigid:
         r = invRodrigues(gmat_init[:3, :3])
         t = gmat_init[:3, 3]
         g0 = np.vstack((r.reshape((-1, 1)), t.reshape((-1, 1)))).reshape((-1, ))
-        # print("gmat init\n{}".format(gmat_init[:3, :3]))
-        # print("r recon\n{}".format(rodrigues(g0[:3])))
-        # print("r \n {}".format(g0[:3]))
         g_star = optimize.leastsq(func_sig, g0)[0]
         gmat = np.zeros((4, 4))
         gmat[3, 3] = 1
@@ -160,13 +157,6 @@ if __name__ == "__main__":
     pts2 = mat_dict['pt1_tf'].astype(float)
     gmat = mat_dict['gmat'].astype(float)
 
-    mat = tf(pts1, pts2)
-    mat = mat / mat[3, 3]
-    print(mat)
-    recovered = np.dot(mat, pts1)
-    err = (np.abs(pts2 - recovered)).sum()
-    print("Reprojection Error {}".format(err))
-
     mat = register(pts1, pts2)
-    # print(mat)
-    print("Register err: {}".format(errFunc(mat, pts1, pts2).sum()))
+    err = errFunc(mat, pts1, pts2).sum()
+    print("Reprojection Error: {}".format(err))
