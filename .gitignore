@@ -1,2 +1,5 @@
 test_cases/
 pcd_data/
+__pycache__
+.vscode
+.DS_Store
